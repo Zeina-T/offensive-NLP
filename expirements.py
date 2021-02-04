@@ -20,7 +20,7 @@ monolingual_models = {
     "en": ("bert-base-cased", True),
 }
 
-multi_lingual_model = "bert-base-cased"  # "bert-base-multilingual-cased"
+multi_lingual_model = "bert-base-multilingual-cased"
 BASE_EPOCHS = 20
 LOW_EPOCHS = 10
 LEARNING_RATE = 1e-01
