@@ -20,7 +20,7 @@ def read_data(json_path):
 DATA = read_data(DATA_DIR / "data_2021-02-02_23-55.json")
 
 
-def preprocess_data(language_code, cased=True, number_samples=None):
+def preprocess_data(language_code, cased=True, number_samples=None, equal_sample=True):
     assert language_code in DATA_LANGUAGES
 
     train_data = DATA[language_code]["train"]
@@ -33,8 +33,17 @@ def preprocess_data(language_code, cased=True, number_samples=None):
         train_data["tweet"] = train_data["tweet"].apply(lambda x: x.lower())
         test_data["tweet"] = test_data["tweet"].apply(lambda x: x.lower())
 
-    if number_samples is not None:
-        train_data = train_data.sample(n=number_samples, random_state=123)
+    if number_samples is not None and equal_sample:
+        samples_per_class = number_samples // len(train_data.label.unique())
+        train_data = (
+            train_data.groupby("label")
+            .apply(lambda x: x.sample(samples_per_class))
+            .reset_index(drop=True)
+        )  # sample equally from each class
+        train_data = train_data.sample(number_samples)  # shuffle
+
+    elif number_samples is not None and not equal_sample:  # random sampling
+        train_data = train_data.sample(n=number_samples)
 
     train_tweets = train_data["tweet"].values.tolist()
     test_tweets = test_data["tweet"].values.tolist()

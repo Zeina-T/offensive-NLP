@@ -3,10 +3,8 @@ import torch
 from utils.dataloaders import get_data_loader
 from utils.metrics import calcuate_accuracy
 
-EPOCHS = 1
-
-# device = "cuda" if torch.cuda.is_available() else "cpu"
-device = "cpu"
+device = "cuda" if torch.cuda.is_available() else "cpu"
+# device = "cpu"
 
 
 def train(model, training_loader, epoch, optimizer, loss_function):
