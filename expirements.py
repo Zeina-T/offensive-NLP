@@ -1,3 +1,4 @@
+import os
 import json
 import random
 from datetime import datetime
@@ -21,46 +22,108 @@ monolingual_models = {
 }
 
 multi_lingual_model = "bert-base-multilingual-cased"
-BASE_EPOCHS = 20
-LOW_EPOCHS = 10
-LEARNING_RATE = 1e-01
-DECAY_FACTOR = 0.3
-RESULTS_DIR = Path("results")
+BASE_EPOCHS = 15
+LOW_EPOCHS = 50
+LEARNING_RATE = 1e-05
+DECAY_FACTOR = 0.1
+RESULTS_DIR = Path("results_2")
 device = "cuda" if torch.cuda.is_available() else "cpu"
 # device = "cpu"
 
 
-def separate_few_shot_experiment(base_lang, low_lang, sample_count):
-    exp_id = random.randint(0, 1e6)
+def mono_lingual_experiment(exp_id, low_lang, model_name, sample_count, cased=True,):
 
-    base_tweets, base_labels, _, _ = preprocess_data(base_language, cased=True)
     low_data = preprocess_data(
-        low_language, cased=True, number_samples=number_low_samples, equal_sample=True
+        low_lang, cased=cased, number_samples=sample_count, equal_sample=True
     )
-
-    base_training_loader = get_data_loader(
-        (base_tweets, base_labels),
-        multi_lingual_model,
-        cased=False,
-        testing_loader=False,
-    )
+    print('---- Getting Data Loaders ----')
+   
     low_training_loader, low_testing_loader = get_data_loader(
         low_data,
-        multi_lingual_model,
-        cased=False,
+        model_name,
         testing_loader=True,
     )
+    
+    model = BertForSequenceClassification.from_pretrained(model_name)
+    print(f'---- loaded {model_name} from scratch ----')
 
-    model = BertForSequenceClassification.from_pretrained(multi_lingual_model)
     model.to(device)
     loss_function = torch.nn.CrossEntropyLoss()
     optimizer = AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=DECAY_FACTOR)
 
-    for epoch in range(EPOCHS):
+    for epoch in range(LOW_EPOCHS):
         print(f"---- BASE EPOCH: {epoch} ----")
-        train(model, base_training_loader, epoch, optimizer, loss_function)
+        train(model, low_training_loader, epoch, optimizer, loss_function)
 
-    for epoch in range(EPOCHS):
+    validate_target, validate_predictions = validate(
+        model, low_testing_loader, loss_function
+    )
+
+    torch.save(
+        validate_target,
+        RESULTS_DIR
+        / f"raw_data/mono_{low_lang}_{sample_count}_{exp_id}_target.pt",
+    )
+    torch.save(
+        validate_predictions,
+        RESULTS_DIR
+        / f"raw_data/mono_{low_lang}_{sample_count}_{exp_id}_predictions.pt",
+    )
+
+    scores = calculate_scores(validate_target, validate_predictions)
+
+    save_experiment(
+        exp_id,
+        low_lang,
+        sample_count,
+        model_name,
+        LEARNING_RATE,
+        LOW_EPOCHS,
+        scores,
+    )
+    model.save_pretrained(f"results_2/mono_model_{low_lang}_{exp_id}/")
+
+
+def separate_few_shot_experiment(exp_id, base_lang, low_lang, model_name, sample_count, cased=True):
+
+    base_tweets, base_labels, _, _ = preprocess_data(base_lang, cased=True)
+    low_data = preprocess_data(
+        low_lang, cased=cased, number_samples=sample_count, equal_sample=True
+    )
+    print('---- Getting Data Loaders ----')
+    base_training_loader = get_data_loader(
+        (base_tweets, base_labels),
+        model_name,
+        testing_loader=False,
+    )
+    low_training_loader, low_testing_loader = get_data_loader(
+        low_data,
+        model_name,
+        testing_loader=True,
+    )
+    
+    if os.path.isdir(f"results_2/model_multingual_bert_{base_lang}/"):
+        # skip training the model on base lang if already trained
+        model = BertForSequenceClassification.from_pretrained(f"results_2/model_multingual_bert_{base_lang}/")
+        print('loaded model from pretuned')
+        model.to(device)
+        loss_function = torch.nn.CrossEntropyLoss()
+    else:
+        model = BertForSequenceClassification.from_pretrained(model_name)
+        print('loaded model from scratch')
+
+        model.to(device)
+        loss_function = torch.nn.CrossEntropyLoss()
+        optimizer = AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=DECAY_FACTOR)
+
+        for epoch in range(BASE_EPOCHS):
+            print(f"---- BASE EPOCH: {epoch} ----")
+            train(model, base_training_loader, epoch, optimizer, loss_function)
+
+        model.save_pretrained(f"results_2/model_multingual_bert_{base_lang}/") # save model trained on base language for future use
+
+    optimizer = AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=DECAY_FACTOR) # reinitialzie the optimizer
+    for epoch in range(LOW_EPOCHS):
         print(f"---- LOW EPOCH: {epoch} ----")
         train(model, low_training_loader, epoch, optimizer, loss_function)
 
@@ -86,14 +149,15 @@ def separate_few_shot_experiment(base_lang, low_lang, sample_count):
         base_lang,
         low_lang,
         sample_count,
-        multi_lingual_model,
+        model_name,
         LEARNING_RATE,
-        EPOCHS,
+        BASE_EPOCHS+LOW_EPOCHS,
         scores,
     )
+    model.save_pretrained(f"results_2/model_{exp_id}/")
 
 
-def combined_few_shot_experiment(base_lang, low_lang, sample_count):
+def combined_few_shot_experiment(base_lang, low_lang, model_name, sample_count):
     exp_id = random.randint(0, 1e6)
 
     train_test_data = get_combined_language_data(
@@ -102,11 +166,10 @@ def combined_few_shot_experiment(base_lang, low_lang, sample_count):
 
     training_loader, testing_loader = get_data_loader(
         train_test_data,
-        multi_lingual_model,
-        cased=False,
+        model_name,
     )
 
-    model = BertForSequenceClassification.from_pretrained(multi_lingual_model)
+    model = BertForSequenceClassification.from_pretrained(model_name)
     model.to(device)
     optimizer = AdamW(model.parameters(), lr=LEARNING_RATE)
     loss_function = torch.nn.CrossEntropyLoss()
@@ -136,7 +199,7 @@ def combined_few_shot_experiment(base_lang, low_lang, sample_count):
         base_lang,
         low_lang,
         sample_count,
-        multi_lingual_model,
+        model_name,
         LEARNING_RATE,
         EPOCHS,
         scores,
@@ -168,6 +231,13 @@ def save_experiment(
 
 if __name__ == "__main__":
     samples = [10, 50, 100, 200, 500]
-
+    exp_id = random.randint(0, 1e6)
+    model_name = multi_lingual_model
     for i in samples:
-        separate_few_shot_experiment("en", "tr", i)
+        separate_few_shot_experiment(exp_id, "en", "tr", model_name, i)
+        
+    samples = [10, 50, 100, 200, 500]
+    exp_id = random.randint(0, 1e6)
+    model_name = monolingual_models['tr'][0]
+    for i in samples:
+        mono_lingual_experiment(exp_id, "tr", model_name, i)

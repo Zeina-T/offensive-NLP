@@ -78,8 +78,8 @@ def validate(model, testing_loader, loss_function):
                 print(f"--- Validation Loss per 100 steps: {loss_step}")
                 print(f"--- Validation Accuracy per 100 steps: {accu_step}")
 
-            epoch_preds = torch.cat((epoch_preds, preds), dim=0)
-            epoch_targets = torch.cat((epoch_targets, targets.flatten()), dim=0)
+            epoch_preds = torch.cat((epoch_preds, preds.float()), dim=0)
+            epoch_targets = torch.cat((epoch_targets, targets.flatten().float()), dim=0)
 
     return epoch_targets, epoch_preds
 

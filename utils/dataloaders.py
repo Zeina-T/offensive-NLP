@@ -24,7 +24,6 @@ class OffensiveDataset(torch.utils.data.Dataset):
 def get_data_loader(
     data,
     model_name,
-    cased,
     testing_loader=True,
 ):
     if testing_loader:
