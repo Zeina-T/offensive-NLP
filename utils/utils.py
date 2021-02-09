@@ -3,6 +3,7 @@ import random
 from pathlib import Path
 
 import pandas as pd
+from imblearn.over_sampling import RandomOverSampler
 
 DATA_DIR = Path("data")
 DATA_LANGUAGES = ["gr", "ar", "tr", "da", "en"]
@@ -42,14 +43,34 @@ def preprocess_data(language_code, cased=True, number_samples=None, equal_sample
         )  # sample equally from each class
         train_data = train_data.sample(number_samples)  # shuffle
 
+        train_tweets = train_data["tweet"].values.tolist()
+        train_labels = train_data["label"].values.tolist()
+        test_tweets = test_data["tweet"].values.tolist()
+        test_labels = test_data["label"].values.tolist()
     elif number_samples is not None and not equal_sample:  # random sampling
         train_data = train_data.sample(n=number_samples)
 
-    train_tweets = train_data["tweet"].values.tolist()
-    test_tweets = test_data["tweet"].values.tolist()
+        train_tweets = train_data["tweet"].values.tolist()
+        train_labels = train_data["label"].values.tolist()
+        test_tweets = test_data["tweet"].values.tolist()
+        test_labels = test_data["label"].values.tolist()
 
-    train_labels = train_data["label"].values.tolist()
-    test_labels = test_data["label"].values.tolist()
+    else:  # if not using number_samples sample the data to avoid unbalanced classes
+        max_sample = train_data["label"].value_counts().max()
+        class_size = {i: max_sample for i in train_data["label"].unique()}
+
+        sampler = RandomOverSampler(sampling_strategy=class_size)
+
+        train_X, train_y = sampler.fit_resample(
+            train_data[["tweet"]], train_data["label"]
+        )
+        test_X, test_y = sampler.fit_resample(test_data[["tweet"]], test_data["label"])
+
+        train_tweets = train_X.values.tolist()
+        test_tweets = test_X.values.tolist()
+
+        train_labels = train_y.values.tolist()
+        test_labels = test_y.values.tolist()
 
     return train_tweets, train_labels, test_tweets, test_labels
 
@@ -86,4 +107,4 @@ def get_combined_language_data(
 
 
 if __name__ == "__main__":
-    print(get_language_data("ar", "tr", number_low_samples=10))
+    preprocess_data("tr", cased=True, number_samples=None)
